@@ -1,3 +1,5 @@
+# 
+# Copyright (C) 2021 Björnborg Nguyen
 # Copyright (C) 2019 Ola Benderius
 #
 # This program is free software: you can redistribute it and/or modify
@@ -18,9 +20,10 @@ RUN echo http://dl-4.alpinelinux.org/alpine/v3.8/main > /etc/apk/repositories &&
     echo http://dl-4.alpinelinux.org/alpine/v3.8/community >> /etc/apk/repositories && \
     apk update && \
     apk --no-cache add \
-        cmake \
-        g++ \
-        make
+    cmake \
+    g++ \
+    linux-headers \
+    make
 ADD . /opt/sources
 WORKDIR /opt/sources
 RUN mkdir build && \
@@ -29,7 +32,7 @@ RUN mkdir build && \
     make && make install
 
 
-FROM alpine:3.9
+FROM alpine:3.8
 
 WORKDIR /usr/bin
 COPY --from=builder /tmp/bin/opendlv-logic-control-bicycle .

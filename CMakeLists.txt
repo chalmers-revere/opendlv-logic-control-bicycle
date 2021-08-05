@@ -1,3 +1,4 @@
+# Copyright (C) 2021 Björnborg Nguyen
 # Copyright (C) 2019 Ola Benderius
 #
 # This program is free software: you can redistribute it and/or modify
@@ -20,7 +21,7 @@ project(opendlv-logic-control-bicycle)
 ################################################################################
 # Defining the relevant version of libcluon.
 set(OPENDLV_STANDARD_MESSAGE_SET opendlv-standard-message-set-v0.9.10.odvd)
-set(CLUON_COMPLETE cluon-complete-v0.0.121.hpp)
+set(CLUON_COMPLETE cluon-complete-v0.0.140.hpp)
 
 ################################################################################
 # Set the search path for .cmake files.

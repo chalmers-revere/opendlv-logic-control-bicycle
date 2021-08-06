@@ -61,17 +61,25 @@ int32_t main(int32_t argc, char **argv)
     cluon::OD4Session od4{
         static_cast<uint16_t>(std::stoi(commandlineArguments["cid"]))};
 
+    std::mutex timestampLastRequestMutex;
+    // Zero timestamp
+    cluon::data::TimeStamp timestampLastRequest;
+
     std::mutex requestMutex;
     float vxRequest{0.0f};
     float yawRateRequest{0.0f};
 
     auto onGroundMotionRequest{
         [&vxRequest, &yawRateRequest, &senderStampInput,
-         &requestMutex, &verbose, &od4](cluon::data::Envelope &&envelope)
+         &requestMutex, &timestampLastRequest, &timestampLastRequestMutex, &verbose, &od4](cluon::data::Envelope &&envelope)
         {
           if (envelope.senderStamp() == senderStampInput)
           {
-
+            if (cluon::time::deltaInMicroseconds(envelope.sampleTimeStamp(), timestampLastRequest) > 0)
+            {
+              std::lock_guard<std::mutex> lock(timestampLastRequestMutex);
+              timestampLastRequest = envelope.sampleTimeStamp();
+            }
             auto msg = cluon::extractMessage<opendlv::proxy::GroundMotionRequest>(
                 std::move(envelope));
 
@@ -93,6 +101,9 @@ int32_t main(int32_t argc, char **argv)
             }
           }
         }};
+
+    od4.dataTrigger(opendlv::proxy::GroundMotionRequest::ID(),
+                    onGroundMotionRequest);
 
     // Hack to use opendlv-logic-control-speed
     std::mutex speedControlMutex;
@@ -146,8 +157,14 @@ int32_t main(int32_t argc, char **argv)
     float groundAccelerationRequest = 0.0f;
     auto onGroundAccelerationRequest{
         [&groundAccelerationRequest, &groundAccelerationRequestMutex,
+         &timestampLastRequest, &timestampLastRequestMutex,
          &verbose](cluon::data::Envelope &&envelope)
         {
+          if (cluon::time::deltaInMicroseconds(envelope.sampleTimeStamp(), timestampLastRequest) > 0)
+          {
+            std::lock_guard<std::mutex> lock(timestampLastRequestMutex);
+            timestampLastRequest = envelope.sampleTimeStamp();
+          }
           auto msg =
               cluon::extractMessage<opendlv::proxy::GroundAccelerationRequest>(
                   std::move(envelope));
@@ -168,12 +185,15 @@ int32_t main(int32_t argc, char **argv)
 
     auto atFrequency{
         [&od4, &vehicleLength, &cogToRear, &vxRequest,
-         &yawRateRequest, &senderStampOutput, &requestMutex, &groundAccelerationRequest, &groundAccelerationRequestMutex, &verbose]() -> bool
+         &yawRateRequest, &senderStampOutput, &requestMutex,
+         &groundAccelerationRequest, &groundAccelerationRequestMutex,
+         &timestampLastRequest, &timestampLastRequestMutex,
+         &verbose]() -> bool
         {
           float delta;
           {
             std::lock_guard<std::mutex> lock(requestMutex);
-            if (vxRequest > 1)
+            if (vxRequest > 0.1)
             {
               delta = static_cast<float>(atan2(
                   vehicleLength * tan(cogToRear * yawRateRequest / vxRequest),
@@ -191,23 +211,32 @@ int32_t main(int32_t argc, char **argv)
           }
 
           cluon::data::TimeStamp ts = cluon::time::now();
-
+          // Only send valued requests if fresh, 1 second
           opendlv::proxy::ActuationRequest ar;
-          ar.acceleration(acceleration);
-          ar.steering(delta);
-          ar.isValid(true);
+          std::cout << "Timediff=" << cluon::time::deltaInMicroseconds(ts, timestampLastRequest) << std::endl;
+          if (cluon::time::deltaInMicroseconds(ts, timestampLastRequest) < 1000000)
+          {
+            ar.acceleration(acceleration);
+            ar.steering(delta);
+            ar.isValid(true);
+          }
+          else
+          {
+            ar.acceleration(-1.5);
+            ar.steering(delta);
+            ar.isValid(true);
+          }
+
           od4.send(ar, ts, senderStampOutput);
 
           if (verbose)
           {
-            std::cout << "Sending steering wheel angle=" << delta << ", acceleration=" << acceleration << std::endl;
+            std::cout << "Sending steering wheel angle=" << ar.steering() << ", acceleration=" << ar.acceleration() << std::endl;
           }
 
           return true;
         }};
 
-    od4.dataTrigger(opendlv::proxy::GroundMotionRequest::ID(),
-                    onGroundMotionRequest);
     od4.timeTrigger(std::stoi(commandlineArguments["freq"]), atFrequency);
 
     retCode = 0;

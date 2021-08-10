@@ -191,7 +191,7 @@ int32_t main(int32_t argc, char **argv)
          &yawRateRequest, &senderStampOutput, &requestMutex,
          &groundAccelerationRequest, &groundAccelerationRequestMutex,
          &timestampLastRequest, &timestampLastRequestMutex,
-         &verbose]() -> bool
+         &steeringCoef, &verbose]() -> bool
         {
           float delta{0};
           {

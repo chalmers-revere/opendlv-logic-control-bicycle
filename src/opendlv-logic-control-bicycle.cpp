@@ -190,47 +190,39 @@ int32_t main(int32_t argc, char **argv)
          &timestampLastRequest, &timestampLastRequestMutex,
          &verbose]() -> bool
         {
-          float delta;
+          float delta{0};
           {
             std::lock_guard<std::mutex> lock(requestMutex);
             if (vxRequest > 0.1)
             {
+              // 2021-08-09 21:41:53 | This is too weak. Roughly 90 deg steering. 360 is possible.
+              // 2021-08-10 09:26:15 | Apparently
               delta = static_cast<float>(atan2(
                   vehicleLength * tan(cogToRear * yawRateRequest / vxRequest),
                   cogToRear));
             }
-            else
-            {
-              delta = 0;
-            }
-          }
-          float acceleration;
-          {
-            std::lock_guard<std::mutex> lock(groundAccelerationRequestMutex);
-            acceleration = groundAccelerationRequest;
           }
 
           cluon::data::TimeStamp ts = cluon::time::now();
           // Only send valued requests if fresh, 1 second
           opendlv::proxy::ActuationRequest ar;
-          std::cout << "Timediff=" << cluon::time::deltaInMicroseconds(ts, timestampLastRequest) << std::endl;
           if (cluon::time::deltaInMicroseconds(ts, timestampLastRequest) < 1000000)
           {
-            ar.acceleration(acceleration);
-            ar.steering(delta);
-            ar.isValid(true);
+            std::lock_guard<std::mutex> lock(groundAccelerationRequestMutex);
+            ar.acceleration(groundAccelerationRequest);
           }
           else
           {
             ar.acceleration(-1.5);
-            ar.steering(delta);
-            ar.isValid(true);
           }
+          ar.steering(delta);
+          ar.isValid(true);
 
           od4.send(ar, ts, senderStampOutput);
 
           if (verbose)
           {
+            std::cout << "Timediff=" << cluon::time::deltaInMicroseconds(ts, timestampLastRequest) << std::endl;
             std::cout << "Sending steering wheel angle=" << ar.steering() << ", acceleration=" << ar.acceleration() << std::endl;
           }
 
@@ -238,7 +230,11 @@ int32_t main(int32_t argc, char **argv)
         }};
 
     od4.timeTrigger(std::stoi(commandlineArguments["freq"]), atFrequency);
-
+    opendlv::proxy::ActuationRequest ar;
+    ar.acceleration(-1.5);
+    ar.steering(0.0);
+    ar.isValid(true);
+    od4.send(ar, cluon::time::now(), senderStampOutput);
     retCode = 0;
   }
   return retCode;

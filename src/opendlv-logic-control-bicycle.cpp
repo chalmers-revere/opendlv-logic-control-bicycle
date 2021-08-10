@@ -40,6 +40,7 @@ int32_t main(int32_t argc, char **argv)
               << "--cog-to-rear=<Distance COG to rear> "
               << "[--id-input=<Sender stamp, input message (default 0)>] "
               << "[--id-output=<Sender stamp, output messages (default 0)>] "
+              << "[--steering-coef=<converting road wheel angle to steering>] "
               << "[--verbose]"
               << std::endl
               << "Example: " << argv[0]
@@ -57,7 +58,9 @@ int32_t main(int32_t argc, char **argv)
     float const cogToRear{std::stof(commandlineArguments["cog-to-rear"])};
     // float const speedMax{std::stof(commandlineArguments["speed-max"])};
     float const vehicleLength = cogToFront + cogToRear;
-
+    float const steeringCoef{
+        (commandlineArguments.count("steering-coef") != 0) ? std::stof(commandlineArguments["steering-coef"]) : 1.0f};
+    
     cluon::OD4Session od4{
         static_cast<uint16_t>(std::stoi(commandlineArguments["cid"]))};
 
@@ -197,7 +200,7 @@ int32_t main(int32_t argc, char **argv)
             {
               // 2021-08-09 21:41:53 | This is too weak. Roughly 90 deg steering. 360 is possible.
               // 2021-08-10 09:26:15 | Apparently
-              delta = static_cast<float>(atan2(
+              delta = steeringCoef*static_cast<float>(atan2(
                   vehicleLength * tan(cogToRear * yawRateRequest / vxRequest),
                   cogToRear));
             }

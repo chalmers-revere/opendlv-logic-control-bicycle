@@ -60,7 +60,7 @@ int32_t main(int32_t argc, char **argv)
     float const vehicleLength = cogToFront + cogToRear;
     float const steeringCoef{
         (commandlineArguments.count("steering-coef") != 0) ? std::stof(commandlineArguments["steering-coef"]) : 1.0f};
-    
+
     cluon::OD4Session od4{
         static_cast<uint16_t>(std::stoi(commandlineArguments["cid"]))};
 
@@ -186,38 +186,52 @@ int32_t main(int32_t argc, char **argv)
     od4.dataTrigger(opendlv::proxy::GroundAccelerationRequest::ID(),
                     onGroundAccelerationRequest);
 
+    double groundSpeed{0.0};
+    std::mutex groundSpeedMutex;
+    auto onGroundSpeedReading{
+        [&groundSpeed, &groundSpeedMutex](
+            cluon::data::Envelope &&envelope)
+        {
+          std::lock_guard<std::mutex> lock(groundSpeedMutex);
+          auto groundSpeedReading = cluon::extractMessage<opendlv::proxy::GroundSpeedReading>(
+              std::move(envelope));
+          groundSpeed = groundSpeedReading.groundSpeed();
+        }};
+    od4.dataTrigger(opendlv::proxy::GroundSpeedReading::ID(),
+                    onGroundSpeedReading);
+
     auto atFrequency{
         [&od4, &vehicleLength, &cogToRear, &vxRequest,
          &yawRateRequest, &senderStampOutput, &requestMutex,
          &groundAccelerationRequest, &groundAccelerationRequestMutex,
          &timestampLastRequest, &timestampLastRequestMutex,
-         &steeringCoef, &verbose]() -> bool
+         &steeringCoef, &groundSpeed, &groundSpeedMutex, &verbose]() -> bool
         {
           float delta{0};
           {
             std::lock_guard<std::mutex> lock(requestMutex);
-            if (vxRequest > 0.1)
+            std::lock_guard<std::mutex> lock(groundSpeedMutex);
+            if (vxRequest > 0.1 && groundSpeed > 0.1)
             {
               // 2021-08-09 21:41:53 | This is too weak. Roughly 90 deg steering. 360 is possible.
-              // 2021-08-10 09:26:15 | Apparently
-              delta = steeringCoef*static_cast<float>(atan2(
-                  vehicleLength * tan(cogToRear * yawRateRequest / vxRequest),
-                  cogToRear));
+              // 2021-08-12 16:12:48 | This is now scaled linearly with steeringCoef of 16.8 according to roadwheel angle to steering wheel.
+              delta = steeringCoef * static_cast<float>(atan2(
+                                         vehicleLength * tan(cogToRear * yawRateRequest / vxRequest),
+                                         cogToRear));
             }
           }
 
           cluon::data::TimeStamp ts = cluon::time::now();
-          // Only send valued requests if fresh, 1 second
           opendlv::proxy::ActuationRequest ar;
+          ar.acceleration(-1.5);
+          // Only send positive acceleration requests if fresh, 1 second
           if (cluon::time::deltaInMicroseconds(ts, timestampLastRequest) < 1000000)
           {
             std::lock_guard<std::mutex> lock(groundAccelerationRequestMutex);
             ar.acceleration(groundAccelerationRequest);
           }
-          else
-          {
-            ar.acceleration(-1.5);
-          }
+          // Only send valued acceleration requests if fresh, 1 second
+
           ar.steering(delta);
           ar.isValid(true);
 

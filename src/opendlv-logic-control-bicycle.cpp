@@ -209,8 +209,8 @@ int32_t main(int32_t argc, char **argv)
         {
           float delta{0};
           {
-            std::lock_guard<std::mutex> lock(requestMutex);
-            std::lock_guard<std::mutex> lock(groundSpeedMutex);
+            std::lock_guard<std::mutex> lock1(requestMutex);
+            std::lock_guard<std::mutex> lock2(groundSpeedMutex);
             if (vxRequest > 0.1 && groundSpeed > 0.1)
             {
               // 2021-08-09 21:41:53 | This is too weak. Roughly 90 deg steering. 360 is possible.
